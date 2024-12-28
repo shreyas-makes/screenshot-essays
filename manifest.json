@@ -1,0 +1,10 @@
+{
+	"id": "screenshot-essays",
+	"name": "screenshot essays",
+	"version": "2.3.20",
+	"minAppVersion": "1.4.0",
+	"description": "Easily convert your article to image.",
+	"author": "Shreyas Prakash",
+	"authorUrl": "",
+	"isDesktopOnly": false
+}
