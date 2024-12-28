@@ -32,9 +32,7 @@ export default async function (
     preprocessMarkdown(markdown, frontmatter),
     el.createDiv(),
     file.path,
-    app.workspace.getActiveViewOfType(MarkdownView)
-    || app.workspace.activeLeaf?.view
-    || new MarkdownRenderChild(el),
+    app.workspace.getActiveViewOfType(MarkdownView) || app.workspace.activeLeaf?.view || new MarkdownRenderChild(el),
   );
   const skipConfig = type === 'selection' && settings.quickExportSelection;
   if (skipConfig) {

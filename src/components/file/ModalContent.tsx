@@ -1,13 +1,12 @@
-import {type App, type FrontMatterCache, Notice} from 'obsidian';
-import React, {
-  useState, useRef, type FC, useEffect, useCallback,
-} from 'react';
-import {TransformWrapper, TransformComponent} from 'react-zoom-pan-pinch';
-import {isCopiable} from 'src/imageFormatTester';
-import {copy, save} from '../../utils/capture';
+import { type App, type FrontMatterCache, Notice, TFile } from 'obsidian';
+import React, { useState, useRef, type FC, useEffect, useCallback } from 'react';
+import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
+import { isCopiable } from 'src/imageFormatTester';
+import { copy, save } from '../../utils/capture';
 import L from '../../L';
 import Target from '../common/Target';
 import FormItems from '../common/form/FormItems';
+
 
 const formSchema: FormSchema<ISettings> = [
   {
@@ -121,25 +120,25 @@ const formSchema: FormSchema<ISettings> = [
 ];
 
 const ModalContent: FC<{
-  markdownEl: Node;
+  markdownEl: HTMLElement;
   settings: ISettings;
+  app: App;
   frontmatter: FrontMatterCache | undefined;
   title: string;
-  app: App;
-  metadataMap: Record<string, {type: MetadataType}>;
-}> = ({markdownEl, settings, app, frontmatter, title, metadataMap}) => {
+  metadataMap: Record<string, { type: MetadataType }>;
+}> = ({ markdownEl, settings, app, frontmatter, title, metadataMap }) => {
   const [formData, setFormData] = useState<ISettings>(settings);
   const [isGrabbing, setIsGrabbing] = useState(false);
   const previewOutRef = useRef<HTMLDivElement>(null);
   const mainHeight = Math.min(764, (window.innerHeight * 0.85) - 225);
-  const root = useRef<HTMLDivElement>(null);
+  const [processing, setProcessing] = useState(false);
+  const [allowCopy, setAllowCopy] = useState(true);
+
   useEffect(() => {
     setFormData(settings);
   }, [settings]);
-  const [processing, setProcessing] = useState(false);
-  const [allowCopy, setAllowCopy] = useState(true);
+
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises
     isCopiable(formData.format).then(result => {
       setAllowCopy(Boolean(result));
     });
@@ -155,11 +154,10 @@ const ModalContent: FC<{
     try {
       await save(
         app,
-        root.current!,
+        markdownEl as unknown as TFile,
         title,
         formData['2x'],
         formData.format,
-        // @ts-ignore
         app.isMobile as boolean,
       );
     } catch {
@@ -167,7 +165,8 @@ const ModalContent: FC<{
     }
 
     setProcessing(false);
-  }, [root, formData['2x'], formData.format, title, formData.width]);
+  }, [markdownEl, formData['2x'], formData.format, title, formData.width]);
+
   const handleCopy = useCallback(async () => {
     if ((formData.width || 640) <= 20) {
       new Notice(L.invalidWidth());
@@ -176,13 +175,18 @@ const ModalContent: FC<{
 
     setProcessing(true);
     try {
-      await copy(root.current!, formData['2x'], formData.format);
+      const exportImageRoot = markdownEl.querySelector('.export-image-root') as HTMLElement;
+      if (exportImageRoot) {
+        await copy(exportImageRoot, formData['2x'], formData.format);
+      } else {
+        new Notice(L.copyFail());
+      }
     } catch {
       new Notice(L.copyFail());
     }
 
     setProcessing(false);
-  }, [root, formData['2x'], formData.format, title, formData.width]);
+  }, [markdownEl, formData['2x'], formData.format, title, formData.width]);
 
   return (
     <div className='export-image-preview-root'>
@@ -197,55 +201,17 @@ const ModalContent: FC<{
           <div className='info-text'>{L.moreSetting()}</div>
         </div>
         <div className='export-image-preview-right'>
-          <div
-            className='export-image-preview-out'
-            ref={previewOutRef}
-            style={{
-              height: mainHeight,
-              cursor: isGrabbing ? 'grabbing' : 'grab',
-            }}
-          >
-            <TransformWrapper
-              minScale={
-                Math.min(
-                  1,
-                  mainHeight / (root.current?.clientHeight || 100),
-                  (previewOutRef.current?.clientWidth || 400)
-                    / ((root.current?.clientWidth || 0) + 2),
-                ) / 2
-              }
-              maxScale={4}
-              pinch={{step: 20}}
-              doubleClick={{mode: 'reset'}}
-              centerZoomedOut={false}
-              onPanning={() => {
-                setIsGrabbing(true);
-              }}
-              onPanningStop={() => {
-                setIsGrabbing(false);
-              }}
-            >
-              <TransformComponent
-                wrapperStyle={{
-                  width: '100%',
-                  height: mainHeight,
-                }}
-                contentStyle={{
-                  border: '1px var(--divider-color) solid',
-                  borderRadius: '8px',
-                  overflow: 'hidden',
-                  boxShadow: '0 0 10px 10px rgba(0,0,0,0.15)',
-                }}
-              >
+          <div ref={previewOutRef} style={{ height: mainHeight }}>
+            <TransformWrapper>
+              <TransformComponent>
                 <Target
-                  ref={root}
-                  frontmatter={frontmatter}
                   markdownEl={markdownEl}
+                  frontmatter={frontmatter}
                   setting={formData}
+                  title={title}
                   metadataMap={metadataMap}
                   app={app}
-                  title={title}
-                ></Target>
+                />
               </TransformComponent>
             </TransformWrapper>
           </div>
@@ -254,14 +220,13 @@ const ModalContent: FC<{
       </div>
       <div className='export-image-preview-actions'>
         <div>
-          <button onClick={handleCopy} disabled={processing || !allowCopy}>
-            {L.copy()}
-          </button>
-          {allowCopy || <p>{L.notAllowCopy({format: formData.format.replace(/\d$/, '').toUpperCase()})}</p>}
+        <button onClick={handleSave} disabled={processing}>
+        {L.save()}
+        </button>
+          {allowCopy || <p>{L.notAllowCopy({ format: formData.format.replace(/\d$/, '').toUpperCase() })}</p>}
         </div>
         <button onClick={handleSave} disabled={processing}>
-          {/* @ts-ignore */}
-          {app.isMobile ? L.saveVault() : L.save()}
+          {L.save()}
         </button>
       </div>
     </div>

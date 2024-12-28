@@ -7,13 +7,15 @@ import domtoimage from '../dom-to-image-more';
 import L from '../L';
 import makeHTML from './makeHTML';
 import { fileToBase64, delay, getMime } from '.';
+import { splitMarkdown } from './splitMarkdown';
+import JSZip from 'jszip';
 
-async function getBlob(el: HTMLElement, higtResolution: boolean, type: string): Promise<Blob> {
+async function getBlob(el: HTMLElement, highResolution: boolean, type: string): Promise<Blob> {
   return domtoimage.toBlob(el, {
     width: el.clientWidth,
     height: el.clientHeight,
     quality: 0.85,
-    scale: higtResolution ? 2 : 1,
+    scale: highResolution ? 2 : 1,
     requestUrl,
     type,
   }) as Promise<Blob>;
@@ -40,51 +42,31 @@ async function makePdf(blob: Blob, el: HTMLElement) {
 
 export async function save(
   app: App,
-  el: HTMLElement,
+  file: TFile,
   title: string,
-  higtResolution: boolean,
+  highResolution: boolean,
   format: FileFormat,
   isMobile: boolean,
 ) {
-  const blob: Blob = await getBlob(
-    el,
-    higtResolution,
-    getMime(format),
-  );
-  const filename = `${title.replaceAll(/\s+/g, '_')}.${format.replace(/\d$/, '')}`;
-  switch (format) {
-    case 'jpg':
-    case 'webp':
-    case 'png0':
-    case 'png1': {
-      if (isMobile) {
-        const filePath = await app.fileManager.getAvailablePathForAttachment(
-          filename,
-        );
-        await app.vault.createBinary(filePath, await blob.arrayBuffer());
-        new Notice(L.saveSuccess({ filePath }));
-      } else {
-        saveAs(blob, filename);
-      }
+  const markdown = await app.vault.cachedRead(file);
+  const sections = splitMarkdown(markdown, 2000); // Adjust the maxLength as needed
+  const zip = new JSZip();
 
-      break;
-    }
-
-    case 'pdf': {
-      const pdf = await makePdf(blob, el);
-      if (isMobile) {
-        const filePath = await app.fileManager.getAvailablePathForAttachment(
-          filename,
-        );
-        await app.vault.createBinary(filePath, pdf.output('arraybuffer'));
-        new Notice(L.saveSuccess({ filePath }));
-      } else {
-        pdf.save(filename);
-      }
-
-      break;
-    }
+  for (const [index, section] of sections.entries()) {
+    const el = document.createElement('div');
+    el.innerHTML = section;
+    const blob: Blob = await getBlob(el, highResolution, getMime(format));
+    const filename = `${title.replaceAll(/\s+/g, '_')}_part${index + 1}.${format.replace(/\d$/, '')}`;
+    
+    // Add the blob to the zip
+    zip.file(filename, blob);
   }
+
+  // Generate the zip file and trigger download
+  zip.generateAsync({ type: 'blob' }).then((content) => {
+    const zipFilename = `${title.replaceAll(/\s+/g, '_')}.zip`;
+    saveAs(content, zipFilename);
+  });
 }
 
 export async function copy(
@@ -170,7 +152,7 @@ export async function saveMultipleFiles(
       const el = await makeHTML(file, settings, app, containner);
       await save(
         app,
-        el as HTMLElement,
+        file,
         file.basename,
         higtResolution,
         format,
