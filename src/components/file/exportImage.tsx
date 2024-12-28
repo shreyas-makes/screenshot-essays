@@ -1,90 +1,43 @@
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import React from 'react';
-import {
-  type App,
-  type FrontMatterCache,
-  MarkdownRenderChild,
-  MarkdownRenderer,
-  MarkdownView,
-  Modal,
-  type TFile,
-} from 'obsidian';
-import { createRoot } from 'react-dom/client';
-import L from '../../L';
-import ModalContent from './ModalContent';
-import { preprocessMarkdown } from 'src/utils/preprocessMarkdown';
-import Target from '../common/Target';
-import { delay } from 'src/utils';
-import { copy } from 'src/utils/capture';
+import { splitMarkdown } from 'src/utils/splitMarkdown';
+import domtoimage from 'dom-to-image-more';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
 
 export default async function (
   app: App,
   settings: ISettings,
   markdown: string,
   file: TFile,
-  frontmatter: FrontMatterCache | undefined,
-  type: 'file' | 'selection',
 ) {
-  const el = document.createElement('div');
-  await MarkdownRenderer.render(
-    app,
-    preprocessMarkdown(markdown, frontmatter),
-    el.createDiv(),
-    file.path,
-    app.workspace.getActiveViewOfType(MarkdownView) || app.workspace.activeLeaf?.view || new MarkdownRenderChild(el),
-  );
-  const skipConfig = type === 'selection' && settings.quickExportSelection;
-  if (skipConfig) {
-    const div = createDiv();
-    div.style.width = (settings.width || 400) + 'px';
-    div.style.position = 'fixed';
-    div.style.top = '9999px';
-    div.style.left = '9999px';
-    document.body.appendChild(div);
-    const root = createRoot(div);
-    root.render(
-      <Target
-        markdownEl={el}
-        setting={{ ...settings, showMetadata: false, showFilename: false }}
-        frontmatter={{}}
-        title={file.basename}
-        metadataMap={{}}
-        app={app}
-      />,
+  const maxLinesPerImage = 20; // Adjust based on desired image height
+  const chunks = splitMarkdown(markdown, maxLinesPerImage);
+  
+  const zip = new JSZip();
+  
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    const el = document.createElement('div');
+    
+    // Render Markdown chunk
+    await MarkdownRenderer.render(
+      app,
+      chunk,
+      el.createDiv(),
+      file.path,
+      app.workspace.getActiveViewOfType(MarkdownView) || new MarkdownRenderChild(el),
     );
-    await delay(20);
+
+    // Convert rendered element to image
     try {
-      await copy(div.querySelector('.export-image-root')!, settings['2x'], settings.format);
-    } catch (e) {
-      console.error(e);
-      new Notice(L.copyFail());
-    } finally {
-      root.unmount();
-      div.remove();
+      const dataUrl = await domtoimage.toPng(el);
+      zip.file(`page-${i + 1}.png`, dataUrl.split(',')[1], { base64: true });
+    } catch (error) {
+      console.error(`Error exporting page ${i + 1}:`, error);
     }
   }
-  else {
-    const modal = new Modal(app);
-    modal.setTitle(L.imageExportPreview());
-    modal.modalEl.style.width = '85vw';
-    modal.modalEl.style.maxWidth = '1500px';
-    modal.open();
-    const root = createRoot(modal.contentEl);
-    /* @ts-ignore */
-    const metadataMap: Record<string, { type: MetadataType }> = app.metadataCache.getAllPropertyInfos();
-    root.render(
-      <ModalContent
-        markdownEl={el}
-        settings={settings}
-        frontmatter={frontmatter}
-        title={file.basename}
-        metadataMap={metadataMap}
-        app={app}
-      />,
-    );
-    modal.onClose = () => {
-      root?.unmount();
-    };
-  }
+
+  // Save all images as a zip file
+  zip.generateAsync({ type: 'blob' }).then((content) => {
+    saveAs(content, `${file.basename}-screenshots.zip`);
+  });
 }

@@ -1,19 +1,20 @@
-export function splitMarkdown(markdown: string, maxLength: number): string[] {
-    const sections: string[] = [];
-    let currentSection = '';
-
-    const lines = markdown.split('\n');
-    for (const line of lines) {
-        if ((currentSection + line).length > maxLength) {
-            sections.push(currentSection);
-            currentSection = line; // Start a new section
-        } else {
-            currentSection += line + '\n';
-        }
+export function splitMarkdown(content: string, maxLines: number): string[] {
+    const lines = content.split('\n');
+    const chunks: string[] = [];
+    let currentChunk: string[] = [];
+  
+    lines.forEach((line) => {
+      if (currentChunk.length + 1 > maxLines) {
+        chunks.push(currentChunk.join('\n'));
+        currentChunk = [];
+      }
+      currentChunk.push(line);
+    });
+  
+    if (currentChunk.length > 0) {
+      chunks.push(currentChunk.join('\n'));
     }
-    if (currentSection) {
-        sections.push(currentSection); // Push the last section
-    }
-
-    return sections;
-} 
+  
+    return chunks;
+  }
+  

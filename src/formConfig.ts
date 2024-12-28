@@ -60,6 +60,12 @@ export const createSettingConfig = async (app: App): Promise<SettingItem[]> => {
       ].filter(({ value }) => formatAvailable.contains(value as FileFormat)),
     },
     {
+      id: 'maxLines',
+      label: 'Maximum Lines Per Image',
+      type: 'number',
+      defaultValue: 20,
+    },    
+    {
       id: 'quickExportSelection',
       label: L.setting.quickExportSelection.label(),
       description: L.setting.quickExportSelection.description(),
